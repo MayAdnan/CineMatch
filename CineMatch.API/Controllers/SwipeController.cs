@@ -32,6 +32,14 @@ namespace CineMatch.API.Controllers
             bool isFriendSession = request.IsFriendSession;
             string? friendId = request.FriendId;
 
+            // Support both FriendId and FriendEmail for backward compatibility
+            if (string.IsNullOrEmpty(friendId) && !string.IsNullOrEmpty(request.FriendEmail))
+            {
+                // Look up friend by email if FriendId not provided
+                var friendUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.FriendEmail);
+                friendId = friendUser?.Id;
+            }
+
             string sessionId = Guid.NewGuid().ToString();
 
             try
@@ -135,34 +143,21 @@ namespace CineMatch.API.Controllers
         [HttpGet("session/{sessionId}")]
         public async Task<IActionResult> GetSessionInfo(string sessionId)
         {
-            // Use a fresh context to avoid any tracking issues
-            var freshContext = new AppDbContext(
-                new DbContextOptionsBuilder<AppDbContext>()
-                    .UseSqlServer(_context.Database.GetDbConnection().ConnectionString)
-                    .Options);
+            var session = await _context.MatchSessions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == sessionId);
 
-            try
+            if (session == null)
+                return NotFound(new { message = "Session not found." });
+
+            return Ok(new
             {
-                var session = await freshContext.MatchSessions
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(s => s.Id == sessionId);
-
-                if (session == null)
-                    return NotFound(new { message = "Session not found." });
-
-                return Ok(new
-                {
-                    session.Id,
-                    session.IsFriendSession,
-                    session.MatchedMovieId,
-                    session.User1Id,
-                    session.User2Id
-                });
-            }
-            finally
-            {
-                await freshContext.DisposeAsync();
-            }
+                session.Id,
+                session.IsFriendSession,
+                session.MatchedMovieId,
+                session.User1Id,
+                session.User2Id
+            });
         }
 
         // Sparar swipe
@@ -216,38 +211,29 @@ namespace CineMatch.API.Controllers
                     }
                 }
 
-                // Save swipe directly to database using raw SQL to avoid EF tracking issues
-                using var connection = new Microsoft.Data.SqlClient.SqlConnection(_context.Database.GetDbConnection().ConnectionString);
-                await connection.OpenAsync();
+                // Save swipe using EF to maintain compatibility with both SQL Server and SQLite
+                var existingSwipe = await _context.MovieSwipes
+                    .FirstOrDefaultAsync(s => s.UserId == swipe.UserId && s.MovieId == swipe.MovieId && s.SessionId == swipe.SessionId);
 
-                using var command = connection.CreateCommand();
-                command.CommandText = @"
-                    MERGE MovieSwipes AS target
-                    USING (SELECT @UserId AS UserId, @MovieId AS MovieId, @SessionId AS SessionId, @IsLiked AS IsLiked, @CreatedAt AS CreatedAt) AS source
-                    ON target.UserId = source.UserId AND target.MovieId = source.MovieId AND target.SessionId = source.SessionId
-                    WHEN MATCHED THEN
-                        UPDATE SET IsLiked = source.IsLiked, CreatedAt = source.CreatedAt
-                    WHEN NOT MATCHED THEN
-                        INSERT (UserId, MovieId, SessionId, IsLiked, CreatedAt)
-                        VALUES (source.UserId, source.MovieId, source.SessionId, source.IsLiked, source.CreatedAt);";
+                if (existingSwipe != null)
+                {
+                    // Update existing swipe
+                    existingSwipe.IsLiked = swipe.IsLiked;
+                    existingSwipe.CreatedAt = swipe.CreatedAt;
+                }
+                else
+                {
+                    // Add new swipe
+                    _context.MovieSwipes.Add(swipe);
+                }
 
-                command.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@UserId", swipe.UserId));
-                command.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@MovieId", swipe.MovieId));
-                command.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@SessionId", swipe.SessionId));
-                command.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@IsLiked", swipe.IsLiked));
-                command.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@CreatedAt", swipe.CreatedAt));
+                await _context.SaveChangesAsync();
 
-                await command.ExecuteNonQueryAsync();
-
-                // Check for matches - use a fresh context to avoid any tracking conflicts
-                var matchContext = new AppDbContext(
-                    new DbContextOptionsBuilder<AppDbContext>()
-                        .UseSqlServer(_context.Database.GetDbConnection().ConnectionString)
-                        .Options);
-                matchContext.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
+                // Check for matches - use the same context but ensure no tracking issues
+                _context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
 
                 // Debug: log all unique users who swiped in this session
-                var uniqueUsersInSession = await matchContext.MovieSwipes
+                var uniqueUsersInSession = await _context.MovieSwipes
                     .AsNoTracking()
                     .Where(s => s.SessionId == swipe.SessionId)
                     .Select(s => s.UserId)
@@ -258,7 +244,7 @@ namespace CineMatch.API.Controllers
                 Console.WriteLine($"[DEBUG] Unique users in session: {string.Join(", ", uniqueUsersInSession)}");
 
                 // Debug: log movie swipes grouped by movie for this session
-                var movieSwipeGroups = await matchContext.MovieSwipes
+                var movieSwipeGroups = await _context.MovieSwipes
                     .AsNoTracking()
                     .Where(s => s.SessionId == swipe.SessionId)
                     .GroupBy(s => s.MovieId)
@@ -279,11 +265,11 @@ namespace CineMatch.API.Controllers
                 int likedCount;
                 int matchedMovieId;
 
-                likedCount = await matchContext.MovieSwipes
+                likedCount = await _context.MovieSwipes
                     .Where(s => s.SessionId == swipe.SessionId && s.IsLiked)
                     .CountAsync();
 
-                matchedMovieId = await matchContext.MovieSwipes
+                matchedMovieId = await _context.MovieSwipes
                     .Where(s => s.SessionId == swipe.SessionId && s.IsLiked)
                     .GroupBy(s => s.MovieId)
                     .Where(g => g.Select(s => s.UserId).Distinct().Count() >= 2)
@@ -294,7 +280,7 @@ namespace CineMatch.API.Controllers
                 Console.WriteLine($"Match check: found {likedCount} liked swipes, matched movie: {matchedMovieId}");
 
                 // Debug: log all liked swipes in this session
-                var allLiked = await matchContext.MovieSwipes
+                var allLiked = await _context.MovieSwipes
                     .AsNoTracking()
                     .Where(s => s.SessionId == swipe.SessionId && s.IsLiked)
                     .ToListAsync();
@@ -310,32 +296,19 @@ namespace CineMatch.API.Controllers
 
                 if (isMatch)
                 {
-                    // Get the matched swipe from the fresh context
-                    var matchContext2 = new AppDbContext(
-                        new DbContextOptionsBuilder<AppDbContext>()
-                            .UseSqlServer(_context.Database.GetDbConnection().ConnectionString)
-                            .Options);
-                    matchContext2.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
+                    // Get the matched swipe from the context
+                    matchedSwipe = await _context.MovieSwipes
+                        .Where(s => s.SessionId == swipe.SessionId && s.MovieId == matchedMovieId)
+                        .FirstOrDefaultAsync();
 
-                    try
+                    // Persist the match to the MatchSession
+                    var sessionToUpdate = await _context.MatchSessions
+                        .FirstOrDefaultAsync(s => s.Id == swipe.SessionId);
+                    if (sessionToUpdate != null)
                     {
-                        matchedSwipe = await matchContext2.MovieSwipes
-                            .Where(s => s.SessionId == swipe.SessionId && s.MovieId == matchedMovieId)
-                            .FirstOrDefaultAsync();
-
-                        // Persist the match to the MatchSession
-                        var sessionToUpdate = await matchContext.MatchSessions
-                            .FirstOrDefaultAsync(s => s.Id == swipe.SessionId);
-                        if (sessionToUpdate != null)
-                        {
-                            sessionToUpdate.MatchedMovieId = matchedMovieId;
-                            await matchContext.SaveChangesAsync();
-                            Console.WriteLine($"[DEBUG] Persisted match for session {swipe.SessionId}: movie {matchedMovieId}");
-                        }
-                    }
-                    finally
-                    {
-                        await matchContext2.DisposeAsync();
+                        sessionToUpdate.MatchedMovieId = matchedMovieId;
+                        await _context.SaveChangesAsync();
+                        Console.WriteLine($"[DEBUG] Persisted match for session {swipe.SessionId}: movie {matchedMovieId}");
                     }
 
                     Console.WriteLine($"Match found for movie {matchedMovieId}");
@@ -379,8 +352,6 @@ namespace CineMatch.API.Controllers
                         };
                     }
                 }
-
-                await matchContext.DisposeAsync();
 
                 return Ok(new
                 {

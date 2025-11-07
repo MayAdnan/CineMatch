@@ -21,6 +21,12 @@ namespace CineMatchTests.UnitTests.Services
 
         private async Task SetupTestData()
         {
+            // Ensure database is created
+            await _context.Database.EnsureCreatedAsync();
+
+            // Clear change tracker to avoid tracking conflicts
+            _context.ChangeTracker.Clear();
+
             // Clear existing data
             _context.MatchSessions.RemoveRange(_context.MatchSessions);
             _context.MovieSwipes.RemoveRange(_context.MovieSwipes);

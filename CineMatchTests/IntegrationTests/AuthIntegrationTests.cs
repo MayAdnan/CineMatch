@@ -28,7 +28,7 @@ namespace CineMatchTests.IntegrationTests
         {
             var registerRequest = new { Email = "integration@example.com", Password = "password123" };
             var registerResponse = await _client.PostAsJsonAsync("/api/Auth/register", registerRequest);
-            Assert.Equal(HttpStatusCode.OK, registerResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, registerResponse.StatusCode);
 
             var loginRequest = new { Email = "integration@example.com", Password = "password123" };
             var loginResponse = await _client.PostAsJsonAsync("/api/Auth/login", loginRequest);

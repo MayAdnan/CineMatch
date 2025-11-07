@@ -3,6 +3,7 @@ using CineMatch.API.Enums;
 using CineMatch.API.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace CineMatch.API.Controllers
 {
@@ -11,10 +12,12 @@ namespace CineMatch.API.Controllers
     public class FriendsController : BaseController
     {
         private readonly AppDbContext _context;
+        private readonly ILogger<FriendsController> _logger;
 
-        public FriendsController(AppDbContext context)
+        public FriendsController(AppDbContext context, ILogger<FriendsController> logger)
         {
             _context = context;
+            _logger = logger;
         }
 
         [HttpGet]
@@ -46,16 +49,19 @@ namespace CineMatch.API.Controllers
         public async Task<IActionResult> SendFriendRequest(string friendEmail)
         {
             var userId = GetCurrentUserId();
+            _logger.LogInformation("SendFriendRequest called by userId: {userId}, friendEmail: {friendEmail}", userId, friendEmail);
 
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized("Authentication required");
 
             friendEmail = friendEmail?.Trim().ToLowerInvariant();
+            _logger.LogInformation("Normalized friendEmail: {friendEmail}", friendEmail);
 
             if (string.IsNullOrWhiteSpace(friendEmail))
                 return BadRequest("Email cannot be empty");
 
             var friend = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == friendEmail);
+            _logger.LogInformation("Friend found: {found}, friendId: {friendId}", friend != null, friend?.Id);
             if (friend == null)
                 return BadRequest("User not found");
 
@@ -66,6 +72,7 @@ namespace CineMatch.API.Controllers
                 .FirstOrDefaultAsync(f =>
                     (f.RequesterId == userId && f.AddresseeId == friend.Id) ||
                     (f.RequesterId == friend.Id && f.AddresseeId == userId));
+            _logger.LogInformation("Existing friendship: {existing}", existingFriendship != null);
 
             if (existingFriendship != null)
             {
@@ -84,9 +91,11 @@ namespace CineMatch.API.Controllers
                 Status = FriendStatus.Pending,
                 RequestedAt = DateTime.UtcNow
             };
+            _logger.LogInformation("Creating friendship with Id: {id}", friendship.Id);
 
             _context.Friends.Add(friendship);
             await _context.SaveChangesAsync();
+            _logger.LogInformation("Friendship saved successfully");
 
             return Ok(new { message = "Friend request sent successfully" });
         }
@@ -151,6 +160,7 @@ namespace CineMatch.API.Controllers
         public async Task<IActionResult> GetPendingRequests()
         {
             var userId = GetCurrentUserId();
+            _logger.LogInformation("GetPendingRequests called by userId: {userId}", userId);
 
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized("Authentication required");
@@ -165,6 +175,7 @@ namespace CineMatch.API.Controllers
                     requestedAt = f.RequestedAt
                 })
                 .ToListAsync();
+            _logger.LogInformation("Found {count} pending requests for userId: {userId}", requests.Count, userId);
 
             return Ok(requests);
         }

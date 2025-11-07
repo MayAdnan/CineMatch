@@ -4,5 +4,6 @@ namespace CineMatch.API.Models
     {
         public bool IsFriendSession { get; set; }
         public string? FriendId { get; set; }
+        public string? FriendEmail { get; set; }
     }
 }

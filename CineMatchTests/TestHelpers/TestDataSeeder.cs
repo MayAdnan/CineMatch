@@ -21,15 +21,20 @@ namespace CineMatchTests.TestHelpers
             {
                 if (_seeded) return;
 
-                // Make seeding idempotent: if test data already exists, skip seeding
+                // Clear EF Core change tracker to avoid tracking conflicts
+                context.ChangeTracker.Clear();
+
+                // Make seeding idempotent: if test data already exists, skip seeding but clear dynamic data
                 if (await context.Users.AnyAsync(u => u.Id == "user1"))
                 {
+                    // Remove existing dynamic entities
+                    context.MovieSwipes.RemoveRange(await context.MovieSwipes.ToListAsync());
+                    context.MatchSessions.RemoveRange(await context.MatchSessions.ToListAsync());
+                    context.Friends.RemoveRange(await context.Friends.ToListAsync());
+                    await context.SaveChangesAsync();
                     _seeded = true;
                     return;
                 }
-
-                // Clear EF Core change tracker to avoid tracking conflicts
-                context.ChangeTracker.Clear();
 
                 // Remove existing entities
                 context.MovieSwipes.RemoveRange(await context.MovieSwipes.ToListAsync());

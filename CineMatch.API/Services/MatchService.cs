@@ -110,7 +110,11 @@ public class MatchService
 
     private async Task<(bool, MovieSwipe?)> HandleRegularSessionOptimized(MatchSession session, List<MovieSwipe> likedSwipes, string userId, List<string> friendIds)
     {
-        _context.MatchSessions.Attach(session);
+        using var connection = _context.Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open)
+            await connection.OpenAsync();
+
+        using var command = connection.CreateCommand();
 
         var matchQuery = from swipe in _context.MovieSwipes.AsNoTracking()
                           where swipe.IsLiked
@@ -126,8 +130,10 @@ public class MatchService
             if (matchedSwipe == null)
                 return (false, null);
 
-            session.MatchedMovieId = matchedSwipe.MovieId;
-            await _context.SaveChangesAsync();
+            command.CommandText = "UPDATE MatchSessions SET MatchedMovieId = @matchedMovieId WHERE Id = @sessionId";
+            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@matchedMovieId", matchedSwipe.MovieId));
+            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@sessionId", session.Id));
+            await command.ExecuteNonQueryAsync();
             return (true, matchedSwipe);
         }
 
@@ -144,11 +150,12 @@ public class MatchService
             if (matchedSwipe == null)
                 return (false, null);
 
-            session.User2Id = otherMatch.UserId;
-            session.MatchedMovieId = matchedSwipe.MovieId;
-            session.IsFriendSession = false;
-            session.CreatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            command.CommandText = "UPDATE MatchSessions SET User2Id = @user2Id, MatchedMovieId = @matchedMovieId, IsFriendSession = 0, CreatedAt = @createdAt WHERE Id = @sessionId";
+            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@user2Id", otherMatch.UserId));
+            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@matchedMovieId", matchedSwipe.MovieId));
+            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@createdAt", DateTime.UtcNow));
+            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@sessionId", session.Id));
+            await command.ExecuteNonQueryAsync();
 
             return (true, matchedSwipe);
         }
@@ -158,12 +165,12 @@ public class MatchService
         {
             var fallbackSwipe = likedSwipes[random.Next(likedSwipes.Count)];
 
-            session.User2Id = "fallback_match";
-            session.MatchedMovieId = fallbackSwipe.MovieId;
-            session.IsFriendSession = false;
-            session.CreatedAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
+            command.CommandText = "UPDATE MatchSessions SET User2Id = @user2Id, MatchedMovieId = @matchedMovieId, IsFriendSession = 0, CreatedAt = @createdAt WHERE Id = @sessionId";
+            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@user2Id", "fallback_match"));
+            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@matchedMovieId", fallbackSwipe.MovieId));
+            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@createdAt", DateTime.UtcNow));
+            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@sessionId", session.Id));
+            await command.ExecuteNonQueryAsync();
             return (true, fallbackSwipe);
         }
 
