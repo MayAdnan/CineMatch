@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36518.9
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CineMatch.API", "CineMatch.API\CineMatch.API.csproj", "{529C78FD-5E37-4CBB-86B8-7D1A416C9B66}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CineMatchTests", "CineMatchTests\CineMatchTests.csproj", "{82078152-4853-466B-850F-4809B142088D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{529C78FD-5E37-4CBB-86B8-7D1A416C9B66}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{529C78FD-5E37-4CBB-86B8-7D1A416C9B66}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{529C78FD-5E37-4CBB-86B8-7D1A416C9B66}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{529C78FD-5E37-4CBB-86B8-7D1A416C9B66}.Release|Any CPU.Build.0 = Release|Any CPU
+		{82078152-4853-466B-850F-4809B142088D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{82078152-4853-466B-850F-4809B142088D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{82078152-4853-466B-850F-4809B142088D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{82078152-4853-466B-850F-4809B142088D}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {9AC83694-386F-4311-ADC0-DA0CDA94888E}
+	EndGlobalSection
+EndGlobal

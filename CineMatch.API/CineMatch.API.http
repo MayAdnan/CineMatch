@@ -1,0 +1,6 @@
+@CineMatch.API_HostAddress = http://localhost:5008
+
+GET {{CineMatch.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
